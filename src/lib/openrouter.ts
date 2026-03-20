@@ -156,6 +156,26 @@ function buildFallbackAnswer(
     ? `Implemente a proxima rodada de analise e coaching seguindo o foco definido pelo usuario: ${normalizedComplement}.`
     : null;
 
+  const insights = [
+    "Os problemas mais relevantes nao parecem estar distribuidos igualmente; eles tendem a se concentrar em poucos ativos e poucos motoristas.",
+    "Quando a mesma placa aparece entre baixa eficiencia e alta ociosidade, o ganho rapido costuma vir de uma revisao operacional ou tecnica pontual.",
+    "Os piores scores de motoristas sao um bom ponto de partida para uma acao curta de coaching com alto retorno.",
+  ];
+
+  if (complementInsight) {
+    insights.push(complementInsight);
+  }
+
+  const recommendations = [
+    "Ataque primeiro os veiculos que aparecem simultaneamente em ociosidade alta e baixa eficiencia.",
+    "Monte uma lista curta de motoristas de pior score para feedback imediato e acompanhamento na proxima competencia.",
+    "Depois de agir nos casos mais concentrados, gere o insight novamente para revisar o deslocamento das prioridades.",
+  ];
+
+  if (complementRecommendation) {
+    recommendations.push(complementRecommendation);
+  }
+
   return {
     headline: `Prioridades operacionais de ${payload.filters.customerName}`,
     summary: `A leitura automatica nao ficou disponivel nesta tentativa, mas o recorte ainda aponta grupos claros de priorizacao. O maior potencial de ganho rapido esta concentrado em poucos veiculos com ociosidade alta e em motoristas com score mais baixo, indicando que a acao pode ser focada sem depender de uma intervencao ampla em toda a frota.${complementSummary}`,
@@ -181,18 +201,8 @@ function buildFallbackAnswer(
         context: "A recomendacao e atacar poucos ativos e poucos motoristas antes de escalar a intervencao.",
       },
     ],
-    insights: [
-      "Os problemas mais relevantes nao parecem estar distribuidos igualmente; eles tendem a se concentrar em poucos ativos e poucos motoristas.",
-      "Quando a mesma placa aparece entre baixa eficiencia e alta ociosidade, o ganho rapido costuma vir de uma revisao operacional ou tecnica pontual.",
-      "Os piores scores de motoristas sao um bom ponto de partida para uma acao curta de coaching com alto retorno.",
-      ...(complementInsight ? [complementInsight] : []),
-    ].slice(0, 5),
-    recommendations: [
-      "Ataque primeiro os veiculos que aparecem simultaneamente em ociosidade alta e baixa eficiencia.",
-      "Monte uma lista curta de motoristas de pior score para feedback imediato e acompanhamento na proxima competencia.",
-      "Depois de agir nos casos mais concentrados, gere o insight novamente para revisar o deslocamento das prioridades.",
-      ...(complementRecommendation ? [complementRecommendation] : []),
-    ].slice(0, 5),
+    insights: insights.slice(0, 5),
+    recommendations: recommendations.slice(0, 5),
   };
 }
 
@@ -209,6 +219,26 @@ export async function generateStrategicAnswer(
   const normalizedComplement = normalizePromptComplement(promptComplement);
 
   try {
+    const messages: Array<{ role: "system" | "user"; content: string }> = [
+      {
+        role: "system",
+        content: normalizedComplement
+          ? `Voce transforma dados operacionais em leitura executiva clara e recomendacoes praticas. Existe uma instrucao adicional do usuario que deve ser tratada como prioridade editorial da resposta: "${normalizedComplement}".`
+          : "Voce transforma dados operacionais em leitura executiva clara e recomendacoes praticas.",
+      },
+      {
+        role: "user",
+        content: buildPrompt(payload, promptComplement),
+      },
+    ];
+
+    if (normalizedComplement) {
+      messages.push({
+        role: "user",
+        content: `Reforce este foco em toda a resposta: ${normalizedComplement}. Se os dados nao sustentarem parte da orientacao, adapte a resposta para o foco mais proximo suportado pelo recorte.`,
+      });
+    }
+
     const response = await fetch(OPENROUTER_URL, {
       method: "POST",
       headers: {
@@ -221,26 +251,7 @@ export async function generateStrategicAnswer(
       body: JSON.stringify({
         model: process.env.OPENROUTER_MODEL ?? DEFAULT_MODEL,
         response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: normalizedComplement
-              ? `Voce transforma dados operacionais em leitura executiva clara e recomendacoes praticas. Existe uma instrucao adicional do usuario que deve ser tratada como prioridade editorial da resposta: "${normalizedComplement}".`
-              : "Voce transforma dados operacionais em leitura executiva clara e recomendacoes praticas.",
-          },
-          {
-            role: "user",
-            content: buildPrompt(payload, promptComplement),
-          },
-          ...(normalizedComplement
-            ? [
-                {
-                  role: "user" as const,
-                  content: `Reforce este foco em toda a resposta: ${normalizedComplement}. Se os dados nao sustentarem parte da orientacao, adapte a resposta para o foco mais proximo suportado pelo recorte.`,
-                },
-              ]
-            : []),
-        ],
+        messages,
       }),
     });
 
